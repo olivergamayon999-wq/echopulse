@@ -2,10 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Echo Pulse - Final Presentation Build</title>
   <style>
+    * {
+      box-sizing: border-box;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
     body {
       margin: 0;
+      padding: 0;
       background: #08090d;
       color: #fff;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -13,33 +21,108 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       overflow: hidden;
-      user-select: none;
+      touch-action: none;
     }
     #hud {
-      margin-bottom: 12px;
-      font-size: 18px;
+      margin-bottom: 10px;
+      font-size: 16px;
       font-weight: bold;
       display: flex;
-      gap: 30px;
+      gap: 20px;
       background: #111420;
-      padding: 10px 25px;
+      padding: 8px 20px;
       border-radius: 8px;
       border: 1px solid #00ffcc44;
       box-shadow: 0 0 15px rgba(0,255,204,0.1);
+      z-index: 10;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
     canvas {
       border: 2px solid #00ffcc44;
       box-shadow: 0 0 35px rgba(0, 255, 204, 0.12);
       background: #000;
       border-radius: 6px;
+      max-width: 100%;
+      max-height: 70vh;
+      object-fit: contain;
+      touch-action: none;
     }
     #msg {
-      margin-top: 12px;
-      font-size: 13px;
+      margin-top: 8px;
+      font-size: 12px;
       color: #00ffcc;
       letter-spacing: 1px;
+      text-align: center;
+      padding: 0 10px;
+    }
+
+    /* Mobile On-Screen Controls */
+    #mobile-controls {
+      display: none;
+      width: 100%;
+      max-width: 800px;
+      padding: 10px 20px;
+      justify-content: space-between;
+      align-items: center;
+      box-sizing: border-box;
+      z-index: 20;
+    }
+
+    /* Show controls on touch devices or smaller screens */
+    @media (pointer: coarse), (max-width: 800px) {
+      #mobile-controls {
+        display: flex;
+      }
+      #msg {
+        display: none; /* Hide PC keyboard hint on mobile */
+      }
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 48px);
+      grid-template-rows: repeat(3, 48px);
+      gap: 5px;
+    }
+    .btn-ctrl {
+      background: rgba(17, 20, 32, 0.7);
+      border: 1px solid #00ffcc66;
+      color: #00ffcc;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+      active-bg: #00ffcc;
+    }
+    .btn-ctrl:active {
+      background: rgba(0, 255, 204, 0.4);
+      color: #fff;
+    }
+    .btn-pulse {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(255, 0, 127, 0.2);
+      border: 2px solid #ff007f;
+      color: #ff007f;
+      font-size: 14px;
+      box-shadow: 0 0 15px rgba(255, 0, 127, 0.3);
+    }
+    .btn-pulse:active {
+      background: rgba(255, 0, 127, 0.6);
+      color: #fff;
     }
   </style>
 </head>
@@ -50,8 +133,27 @@
     <div>Battery: <span id="battery" style="color:#ff007f">100</span>%</div>
   </div>
 
-  <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <div id="canvas-container">
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+  </div>
+
   <div id="msg">🎮 CONTROLS: WASD / Arrow Keys to Move | SPACEBAR for Sonar Blast (Stand still to recharge battery faster)</div>
+
+  <!-- Mobile On-Screen Touch Overlay Controls -->
+  <div id="mobile-controls">
+    <div class="dpad">
+      <div></div>
+      <button class="btn-ctrl" id="btn-up">▲</button>
+      <div></div>
+      <button class="btn-ctrl" id="btn-left">◀</button>
+      <div></div>
+      <button class="btn-ctrl" id="btn-right">▶</button>
+      <div></div>
+      <button class="btn-ctrl" id="btn-down">▼</button>
+      <div></div>
+    </div>
+    <button class="btn-ctrl btn-pulse" id="btn-pulse">PULSE</button>
+  </div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -59,13 +161,16 @@ const ctx = canvas.getContext('2d');
 
 let player = { x: 80, y: 80, radius: 10, vx: 0, vy: 0, speed: 3.5, battery: 100 };
 let keys = {};
+let touchState = { up: false, down: false, left: false, right: false };
 let crystalsCollected = 0;
 let gameOver = false;
 let gameWon = false;
 let flashRed = false;
 
 // Audio Context (Web Audio API)
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContextClass();
+
 function playSound(freq, type = 'sine', duration = 0.1) {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   try {
@@ -81,6 +186,15 @@ function playSound(freq, type = 'sine', duration = 0.1) {
     osc.stop(audioCtx.currentTime + duration);
   } catch(e){}
 }
+
+// Unlock Web Audio API on first touch/click interaction
+function unlockAudio() {
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+window.addEventListener('touchstart', unlockAudio, { passive: true });
+window.addEventListener('click', unlockAudio, { passive: true });
 
 // Fixed Maze Map
 const walls = [
@@ -132,11 +246,91 @@ for (let i = 0; i < 12; i++) {
 
 let pulses = [];
 
+// Keyboard Listeners
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') triggerBlast();
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
+
+// Touch Control Listeners (Mobile D-Pad & Pulse)
+function bindTouch(btnId, direction) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+
+  const startHandler = (e) => {
+    e.preventDefault();
+    unlockAudio();
+    if (gameOver || gameWon) {
+      restartGame();
+      return;
+    }
+    touchState[direction] = true;
+  };
+
+  const endHandler = (e) => {
+    e.preventDefault();
+    touchState[direction] = false;
+  };
+
+  btn.addEventListener('touchstart', startHandler, { passive: false });
+  btn.addEventListener('touchend', endHandler, { passive: false });
+  btn.addEventListener('mousedown', startHandler);
+  btn.addEventListener('mouseup', endHandler);
+}
+
+bindTouch('btn-up', 'up');
+bindTouch('btn-down', 'down');
+bindTouch('btn-left', 'left');
+bindTouch('btn-right', 'right');
+
+const pulseBtn = document.getElementById('btn-pulse');
+if (pulseBtn) {
+  const pulseHandler = (e) => {
+    e.preventDefault();
+    unlockAudio();
+    if (gameOver || gameWon) {
+      restartGame();
+      return;
+    }
+    triggerBlast();
+  };
+  pulseBtn.addEventListener('touchstart', pulseHandler, { passive: false });
+  pulseBtn.addEventListener('mousedown', pulseHandler);
+}
+
+// Direct Canvas Touch to Restart or Pulse
+canvas.addEventListener('touchstart', (e) => {
+  unlockAudio();
+  if (gameOver || gameWon) {
+    restartGame();
+  }
+}, { passive: true });
+
+function restartGame() {
+  player.x = 80;
+  player.y = 80;
+  player.battery = 100;
+  crystalsCollected = 0;
+  gameOver = false;
+  gameWon = false;
+  flashRed = false;
+  pulses = [];
+  crystals = generateRandomCrystals();
+
+  enemies = [];
+  for (let i = 0; i < 12; i++) {
+    let ex = 200 + (i % 4) * 150 + Math.random() * 40;
+    let ey = 80 + Math.floor(i / 4) * 120 + Math.random() * 40;
+    let angle = Math.random() * Math.PI * 2;
+    let spd = 1.2 + Math.random() * 0.8; 
+    enemies.push({
+      x: ex, y: ey, radius: 6, 
+      vx: Math.cos(angle) * spd, 
+      vy: Math.sin(angle) * spd
+    });
+  }
+}
 
 function triggerBlast() {
   if (player.battery >= 15 && !gameOver && !gameWon) {
@@ -162,10 +356,10 @@ function update() {
   let isMoving = false;
   player.vx = 0; player.vy = 0;
 
-  if (keys['KeyW'] || keys['ArrowUp']) { player.vy = -player.speed; isMoving = true; }
-  if (keys['KeyS'] || keys['ArrowDown']) { player.vy = player.speed; isMoving = true; }
-  if (keys['KeyA'] || keys['ArrowLeft']) { player.vx = -player.speed; isMoving = true; }
-  if (keys['KeyD'] || keys['ArrowRight']) { player.vx = player.speed; isMoving = true; }
+  if (keys['KeyW'] || keys['ArrowUp'] || touchState.up) { player.vy = -player.speed; isMoving = true; }
+  if (keys['KeyS'] || keys['ArrowDown'] || touchState.down) { player.vy = player.speed; isMoving = true; }
+  if (keys['KeyA'] || keys['ArrowLeft'] || touchState.left) { player.vx = -player.speed; isMoving = true; }
+  if (keys['KeyD'] || keys['ArrowRight'] || touchState.right) { player.vx = player.speed; isMoving = true; }
 
   let nextX = player.x + player.vx;
   let nextY = player.y + player.vy;
@@ -285,20 +479,23 @@ function draw() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#ff007f';
-    ctx.font = 'bold 34px sans-serif';
-    ctx.fillText('SWARM OVERRUN - GAME OVER', 150, 240);
+    ctx.font = 'bold 30px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SWARM OVERRUN - GAME OVER', canvas.width / 2, 230);
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#fff';
-    ctx.fillText('Refresh page (F5) to restart with new crystal locations!', 200, 280);
+    ctx.fillText('Tap screen or press F5 / Keys to restart!', canvas.width / 2, 275);
   } else if (gameWon) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#00ffcc';
-    ctx.font = 'bold 34px sans-serif';
-    ctx.fillText('ABYSS ESCAPED - VICTORY!', 180, 240);
+    ctx.font = 'bold 30px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ABYSS ESCAPED - VICTORY!', canvas.width / 2, 230);
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#fff';
-    ctx.fillText('All 5 randomized crystals collected successfully!', 210, 280);
+    ctx.fillText('All 5 randomized crystals collected successfully!', canvas.width / 2, 270);
+    ctx.fillText('Tap screen or press F5 / Keys to play again!', canvas.width / 2, 300);
   }
 }
 
