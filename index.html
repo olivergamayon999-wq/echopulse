@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Echo Pulse - Complete Build</title>
+  <title>Echo Pulse</title>
   <style>
     * {
       box-sizing: border-box;
@@ -92,9 +92,9 @@
       font-weight: 600;
     }
 
-    /* Mobile Controls Container */
+    /* Mobile Controls Container (Hidden on PC) */
     #mobile-controls {
-      display: flex;
+      display: none;
       width: 100%;
       max-width: 800px;
       padding: 10px 30px;
@@ -200,13 +200,23 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Device Detection
 const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 800);
 const msgElem = document.getElementById('msg');
+const mobileControlsElem = document.getElementById('mobile-controls');
+
+// Speeds for Platforms
+const PC_SPEED = 4.2;
+const MOBILE_SPEED = 2.5;
+
+let playerSpeed = isTouchDevice ? MOBILE_SPEED : PC_SPEED;
 
 if (isTouchDevice) {
   msgElem.innerText = '📱 TOUCH CONTROLS: Drag Joystick to Move | Tap PULSE Button for Sonar';
+  mobileControlsElem.style.display = 'flex';
 } else {
   msgElem.innerText = '🎮 CONTROLS: WASD / Arrow Keys to Move | SPACEBAR for Sonar Blast';
+  mobileControlsElem.style.display = 'none';
 }
 
 // Difficulty System Settings
@@ -225,8 +235,8 @@ function setDifficulty(diff) {
   restartGame();
 }
 
-// Balanced Player Properties
-let player = { x: 80, y: 80, radius: 9, vx: 0, vy: 0, speed: 2.5, battery: 100 };
+// Player Properties
+let player = { x: 80, y: 80, radius: 9, vx: 0, vy: 0, battery: 100 };
 let keys = {};
 let joystickVector = { x: 0, y: 0 };
 let crystalsCollected = 0;
@@ -235,7 +245,7 @@ let gameWon = false;
 let flashRed = false;
 let particles = [];
 
-// Audio Context (Web Audio API)
+// Audio Context
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioContextClass();
 
@@ -263,7 +273,7 @@ function unlockAudio() {
 window.addEventListener('touchstart', unlockAudio, { passive: true });
 window.addEventListener('click', unlockAudio, { passive: true });
 
-// Maze Walls (Border + Inner Obstacles)
+// Maze Walls
 const walls = [
   { x: 160, y: 0, w: 20, h: 360 },
   { x: 320, y: 140, w: 20, h: 360 },
@@ -275,7 +285,7 @@ const walls = [
   { x: 790, y: 0, w: 10, h: 500 }
 ];
 
-// Randomized Crystal Placement
+// Crystal Generator
 function generateRandomCrystals() {
   let list = [];
   while (list.length < 5) {
@@ -297,7 +307,7 @@ function generateRandomCrystals() {
 
 let crystals = generateRandomCrystals();
 
-// Dynamic Enemies Based on Difficulty
+// Enemy Generator
 function createEnemies() {
   let cfg = diffSettings[currentDiff];
   let list = [];
@@ -318,7 +328,7 @@ function createEnemies() {
 let enemies = createEnemies();
 let pulses = [];
 
-// Crystal Explosion Particle System
+// Particle Explosion
 function createCrystalExplosion(cx, cy) {
   for (let i = 0; i < 24; i++) {
     let angle = Math.random() * Math.PI * 2;
@@ -336,99 +346,106 @@ function createCrystalExplosion(cx, cy) {
   }
 }
 
-// Keyboard Movement Controls
+// Keyboard Listeners (PC)
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (e.code === 'Space') triggerBlast();
+  if (e.code === 'Space') {
+    if (gameOver || gameWon) {
+      restartGame();
+    } else {
+      triggerBlast();
+    }
+  }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
-// Touch Controls & Joystick Engine
-const joyContainer = document.getElementById('joystick-container');
-const joyThumb = document.getElementById('joystick-thumb');
-let joyTouchId = null;
-const maxRadius = 35;
+// Touch Joystick Mechanics (Mobile Only)
+if (isTouchDevice) {
+  const joyContainer = document.getElementById('joystick-container');
+  const joyThumb = document.getElementById('joystick-thumb');
+  let joyTouchId = null;
+  const maxRadius = 35;
 
-function handleJoystickMove(clientX, clientY) {
-  const rect = joyContainer.getBoundingClientRect();
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
+  function handleJoystickMove(clientX, clientY) {
+    const rect = joyContainer.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
 
-  let deltaX = clientX - centerX;
-  let deltaY = clientY - centerY;
-  let dist = Math.hypot(deltaX, deltaY);
+    let deltaX = clientX - centerX;
+    let deltaY = clientY - centerY;
+    let dist = Math.hypot(deltaX, deltaY);
 
-  if (dist > maxRadius) {
-    deltaX = (deltaX / dist) * maxRadius;
-    deltaY = (deltaY / dist) * maxRadius;
-    dist = maxRadius;
+    if (dist > maxRadius) {
+      deltaX = (deltaX / dist) * maxRadius;
+      deltaY = (deltaY / dist) * maxRadius;
+      dist = maxRadius;
+    }
+
+    joyThumb.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+    
+    let normalizedDist = dist / maxRadius;
+    if (normalizedDist < 0.12) {
+      joystickVector = { x: 0, y: 0 };
+    } else {
+      let speedMult = (normalizedDist - 0.12) / 0.88;
+      let angle = Math.atan2(deltaY, deltaX);
+      joystickVector.x = Math.cos(angle) * speedMult;
+      joystickVector.y = Math.sin(angle) * speedMult;
+    }
   }
 
-  joyThumb.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-  
-  let normalizedDist = dist / maxRadius;
-  if (normalizedDist < 0.12) {
+  function resetJoystick() {
+    joyTouchId = null;
+    joyThumb.style.transform = 'translate(0px, 0px)';
     joystickVector = { x: 0, y: 0 };
-  } else {
-    let speedMult = (normalizedDist - 0.12) / 0.88;
-    let angle = Math.atan2(deltaY, deltaX);
-    joystickVector.x = Math.cos(angle) * speedMult;
-    joystickVector.y = Math.sin(angle) * speedMult;
   }
-}
 
-function resetJoystick() {
-  joyTouchId = null;
-  joyThumb.style.transform = 'translate(0px, 0px)';
-  joystickVector = { x: 0, y: 0 };
-}
+  joyContainer.addEventListener('touchstart', e => {
+    e.preventDefault();
+    unlockAudio();
+    if (gameOver || gameWon) { restartGame(); return; }
+    if (joyTouchId === null && e.changedTouches.length > 0) {
+      const touch = e.changedTouches[0];
+      joyTouchId = touch.identifier;
+      handleJoystickMove(touch.clientX, touch.clientY);
+    }
+  }, { passive: false });
 
-joyContainer.addEventListener('touchstart', e => {
-  e.preventDefault();
-  unlockAudio();
-  if (gameOver || gameWon) { restartGame(); return; }
-  if (joyTouchId === null && e.changedTouches.length > 0) {
-    const touch = e.changedTouches[0];
-    joyTouchId = touch.identifier;
-    handleJoystickMove(touch.clientX, touch.clientY);
-  }
-}, { passive: false });
-
-window.addEventListener('touchmove', e => {
-  if (joyTouchId !== null) {
-    for (let i = 0; i < e.touches.length; i++) {
-      if (e.touches[i].identifier === joyTouchId) {
-        handleJoystickMove(e.touches[i].clientX, e.touches[i].clientY);
-        break;
+  window.addEventListener('touchmove', e => {
+    if (joyTouchId !== null) {
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === joyTouchId) {
+          handleJoystickMove(e.touches[i].clientX, e.touches[i].clientY);
+          break;
+        }
       }
     }
-  }
-}, { passive: true });
+  }, { passive: true });
 
-window.addEventListener('touchend', e => {
-  if (joyTouchId !== null) {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === joyTouchId) {
-        resetJoystick();
-        break;
+  window.addEventListener('touchend', e => {
+    if (joyTouchId !== null) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joyTouchId) {
+          resetJoystick();
+          break;
+        }
       }
     }
-  }
-});
+  });
 
-// Pulse Action Triggering
-const pulseBtn = document.getElementById('btn-pulse');
-pulseBtn.addEventListener('touchstart', e => {
-  e.preventDefault();
-  unlockAudio();
-  if (gameOver || gameWon) { restartGame(); return; }
-  triggerBlast();
-}, { passive: false });
+  const pulseBtn = document.getElementById('btn-pulse');
+  pulseBtn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    unlockAudio();
+    if (gameOver || gameWon) { restartGame(); return; }
+    triggerBlast();
+  }, { passive: false });
+}
 
-canvas.addEventListener('touchstart', () => {
+canvas.addEventListener('click', () => {
   unlockAudio();
   if (gameOver || gameWon) restartGame();
-}, { passive: true });
+});
 
 function restartGame() {
   player.x = 80;
@@ -440,7 +457,7 @@ function restartGame() {
   flashRed = false;
   pulses = [];
   particles = [];
-  resetJoystick();
+  joystickVector = { x: 0, y: 0 };
   crystals = generateRandomCrystals();
   enemies = createEnemies();
 }
@@ -461,7 +478,7 @@ function triggerBlast() {
   }
 }
 
-// Axis Collisions for Smooth Sliding
+// Wall Collision Detector
 function checkWallCollision(px, py, radius) {
   return walls.some(w => 
     px + radius > w.x && px - radius < w.x + w.w &&
@@ -476,6 +493,7 @@ function update() {
   let moveX = 0;
   let moveY = 0;
 
+  // Keyboard Movement
   if (keys['KeyW'] || keys['ArrowUp']) moveY -= 1;
   if (keys['KeyS'] || keys['ArrowDown']) moveY += 1;
   if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
@@ -486,36 +504,37 @@ function update() {
     moveY *= 0.7071;
   }
 
+  // Joystick Movement
   if (joystickVector.x !== 0 || joystickVector.y !== 0) {
     moveX = joystickVector.x;
     moveY = joystickVector.y;
   }
 
-  player.vx = moveX * player.speed;
-  player.vy = moveY * player.speed;
+  player.vx = moveX * playerSpeed;
+  player.vy = moveY * playerSpeed;
 
   if (player.vx !== 0 || player.vy !== 0) isMoving = true;
 
-  // Slide along X-axis
+  // X Axis Movement
   let tryX = player.x + player.vx;
   if (!checkWallCollision(tryX, player.y, player.radius)) {
     player.x = tryX;
   }
 
-  // Slide along Y-axis
+  // Y Axis Movement
   let tryY = player.y + player.vy;
   if (!checkWallCollision(player.x, tryY, player.radius)) {
     player.y = tryY;
   }
 
-  // Battery Recharge Logic (Based on Difficulty)
+  // Battery Recharge
   let cfg = diffSettings[currentDiff];
   if (player.battery < 100) {
     player.battery += isMoving ? cfg.rechargeMoving : cfg.rechargeIdle;
     if (player.battery > 100) player.battery = 100;
   }
 
-  // Wave Propagation
+  // Pulse Propagation
   pulses.forEach((p, idx) => {
     p.radius += 5;
     p.alpha -= 0.012;
@@ -530,7 +549,7 @@ function update() {
     if (pt.alpha <= 0) particles.splice(idx, 1);
   });
 
-  // Collect Crystal Logic & Particle Burst Trigger
+  // Crystal Collection
   crystals.forEach(c => {
     if (!c.collected && Math.hypot(player.x - c.x, player.y - c.y) < player.radius + 8) {
       c.collected = true;
@@ -545,7 +564,7 @@ function update() {
     }
   });
 
-  // Enemy Mechanics
+  // Enemy Movement & Hit Detection
   enemies.forEach(e => {
     e.x += e.vx;
     e.y += e.vy;
@@ -635,7 +654,7 @@ function draw() {
     ctx.fillText('SWARM OVERRUN - GAME OVER', canvas.width / 2, 230);
     ctx.font = '15px sans-serif';
     ctx.fillStyle = '#fff';
-    ctx.fillText('Tap screen or press Space / Keys to restart!', canvas.width / 2, 275);
+    ctx.fillText('Click screen or press Space / Keys to restart!', canvas.width / 2, 275);
   } else if (gameWon) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -646,7 +665,7 @@ function draw() {
     ctx.font = '15px sans-serif';
     ctx.fillStyle = '#fff';
     ctx.fillText('All 5 crystals collected successfully!', canvas.width / 2, 270);
-    ctx.fillText('Tap screen or press Space / Keys to play again!', canvas.width / 2, 300);
+    ctx.fillText('Click screen or press Space / Keys to play again!', canvas.width / 2, 300);
   }
 }
 
