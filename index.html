@@ -56,6 +56,10 @@
       font-weight: bold;
       cursor: pointer;
       transition: all 0.2s ease;
+      outline: none;
+    }
+    .diff-btn:focus {
+      outline: none;
     }
     .diff-btn.active {
       background: #00ffcc;
@@ -92,7 +96,7 @@
       font-weight: 600;
     }
 
-    /* Mobile Controls Container (Hidden on PC) */
+    /* Mobile Controls Container */
     #mobile-controls {
       display: none;
       width: 100%;
@@ -173,9 +177,9 @@
     <div>Crystals: <span id="crystals" style="color:#00ffcc">0</span> / 5</div>
     <div>Battery: <span id="battery" style="color:#ff007f">100</span>%</div>
     <div class="diff-container">
-      <button class="diff-btn" id="btn-easy" onclick="setDifficulty('easy')">EASY</button>
-      <button class="diff-btn active" id="btn-medium" onclick="setDifficulty('medium')">MED</button>
-      <button class="diff-btn" id="btn-hard" onclick="setDifficulty('hard')">HARD</button>
+      <button class="diff-btn" id="btn-easy" onclick="setDifficulty('easy', this)">EASY</button>
+      <button class="diff-btn active" id="btn-medium" onclick="setDifficulty('medium', this)">MED</button>
+      <button class="diff-btn" id="btn-hard" onclick="setDifficulty('hard', this)">HARD</button>
     </div>
   </div>
 
@@ -205,7 +209,6 @@ const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 
 const msgElem = document.getElementById('msg');
 const mobileControlsElem = document.getElementById('mobile-controls');
 
-// Speeds for Platforms
 const PC_SPEED = 4.2;
 const MOBILE_SPEED = 2.5;
 
@@ -228,10 +231,12 @@ const diffSettings = {
 
 let currentDiff = 'medium';
 
-function setDifficulty(diff) {
+function setDifficulty(diff, btn) {
   currentDiff = diff;
-  document.querySelectorAll('.diff-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(`btn-${diff}`).classList.add('active');
+  if (btn) btn.blur(); 
+  if (document.activeElement) document.activeElement.blur();
   restartGame();
 }
 
@@ -346,20 +351,31 @@ function createCrystalExplosion(cx, cy) {
   }
 }
 
-// Keyboard Listeners (PC)
+// Key Listeners with complete focus blur
 window.addEventListener('keydown', e => {
-  keys[e.code] = true;
+  if (document.activeElement && document.activeElement.tagName === 'BUTTON') {
+    document.activeElement.blur();
+  }
+
   if (e.code === 'Space') {
+    e.preventDefault(); 
     if (gameOver || gameWon) {
       restartGame();
     } else {
       triggerBlast();
     }
+  } else {
+    keys[e.code] = true;
   }
 });
-window.addEventListener('keyup', e => keys[e.code] = false);
 
-// Touch Joystick Mechanics (Mobile Only)
+window.addEventListener('keyup', e => {
+  if (e.code !== 'Space') {
+    keys[e.code] = false;
+  }
+});
+
+// Touch Joystick Mechanics
 if (isTouchDevice) {
   const joyContainer = document.getElementById('joystick-container');
   const joyThumb = document.getElementById('joystick-thumb');
