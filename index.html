@@ -57,12 +57,13 @@
       touch-action: none;
     }
     #msg {
-      margin-top: 8px;
-      font-size: 12px;
+      margin-top: 10px;
+      font-size: 13px;
       color: #00ffcc;
       letter-spacing: 1px;
       text-align: center;
-      padding: 0 10px;
+      padding: 0 15px;
+      font-weight: 600;
     }
 
     /* Mobile Controls Container */
@@ -152,7 +153,7 @@
     <canvas id="gameCanvas" width="800" height="500"></canvas>
   </div>
 
-  <div id="msg">🎮 CONTROLS: WASD / Arrow Keys to Move | SPACEBAR for Sonar Blast (Stand still to recharge battery faster)</div>
+  <div id="msg">🎮 CONTROLS: WASD / Arrow Keys to Move | SPACEBAR for Sonar Blast</div>
 
   <!-- Mobile Touch Controls -->
   <div id="mobile-controls">
@@ -169,6 +170,16 @@
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
+// Detect Mobile / Touch Screen and Update Instructions Text
+const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 800);
+const msgElem = document.getElementById('msg');
+
+if (isTouchDevice) {
+  msgElem.innerText = '📱 TOUCH CONTROLS: Drag Joystick to Move | Tap PULSE Button for Sonar';
+} else {
+  msgElem.innerText = '🎮 CONTROLS: WASD / Arrow Keys to Move | SPACEBAR for Sonar Blast';
+}
 
 let player = { x: 80, y: 80, radius: 10, vx: 0, vy: 0, speed: 3.5, battery: 100 };
 let keys = {};
@@ -267,7 +278,7 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 const joyContainer = document.getElementById('joystick-container');
 const joyThumb = document.getElementById('joystick-thumb');
 let joyTouchId = null;
-const maxRadius = 38; // Maximum thumb movement range
+const maxRadius = 38;
 
 function handleJoystickMove(clientX, clientY) {
   const rect = joyContainer.getBoundingClientRect();
@@ -375,7 +386,6 @@ function triggerBlast() {
     pulses.push({ x: player.x, y: player.y, radius: 8, maxRadius: 400, alpha: 1 });
     playSound(200, 'sawtooth', 0.2);
 
-    // AI Reacts: nearby enemies turn slightly towards pulse!
     enemies.forEach(e => {
       if (Math.hypot(e.x - player.x, e.y - player.y) < 220) {
         let angle = Math.atan2(player.y - e.y, player.x - e.x);
@@ -389,7 +399,6 @@ function triggerBlast() {
 function update() {
   if (gameOver || gameWon) return;
 
-  // Combine Keyboard and Joystick Input
   let isMoving = false;
   player.vx = 0; player.vy = 0;
 
@@ -408,7 +417,6 @@ function update() {
   let nextX = player.x + player.vx;
   let nextY = player.y + player.vy;
 
-  // Wall collisions
   walls.forEach(w => {
     if (nextX + player.radius > w.x && nextX - player.radius < w.x + w.w &&
         nextY + player.radius > w.y && nextY - player.radius < w.y + w.h) {
@@ -420,20 +428,17 @@ function update() {
   player.x = nextX;
   player.y = nextY;
 
-  // Battery Recharge Logic (Recharges faster when standing still)
   if (player.battery < 100) {
     player.battery += isMoving ? 0.08 : 0.22;
     if (player.battery > 100) player.battery = 100;
   }
 
-  // Pulses
   pulses.forEach((p, idx) => {
     p.radius += 5.5;
     p.alpha -= 0.012;
     if (p.alpha <= 0) pulses.splice(idx, 1);
   });
 
-  // Collect Crystals
   crystals.forEach(c => {
     if (!c.collected && Math.hypot(player.x - c.x, player.y - c.y) < player.radius + 8) {
       c.collected = true;
@@ -447,7 +452,6 @@ function update() {
     }
   });
 
-  // Swarm AI Movement & Collisions
   enemies.forEach(e => {
     e.x += e.vx;
     e.y += e.vy;
@@ -473,7 +477,6 @@ function draw() {
   ctx.fillStyle = flashRed ? 'rgba(255, 0, 50, 0.4)' : '#000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Sonar Wave Illumination
   pulses.forEach(p => {
     ctx.strokeStyle = `rgba(0, 255, 204, ${p.alpha})`;
     ctx.lineWidth = 2;
@@ -509,7 +512,6 @@ function draw() {
     });
   });
 
-  // Player
   ctx.fillStyle = '#00ffcc';
   ctx.shadowBlur = 10;
   ctx.shadowColor = '#00ffcc';
@@ -518,7 +520,6 @@ function draw() {
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Win/Loss Overlay
   if (gameOver) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
